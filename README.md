@@ -1,4 +1,4 @@
-# Pivotal_cli
+# Pivotal-cli
 
 Simple command line tool for working with pivotal stories.
 

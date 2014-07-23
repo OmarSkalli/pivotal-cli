@@ -7,6 +7,8 @@ spec = Gem::Specification.new do |s|
   s.email = 'chetane@gmail.com'
   s.platform = Gem::Platform::RUBY
   s.summary = 'Simple command line tool for working with Pivotal Stories'
+  s.homepage = 'https://github.com/chetane/pivotal-cli'
+  s.license = 'MIT'
   s.files = `git ls-files`.split($/)
   s.require_paths << 'lib'
   s.bindir = 'bin'
