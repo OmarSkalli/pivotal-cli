@@ -101,7 +101,7 @@ command :branch do |c|
     end
 
     # Make sure feature is estimated (can't start otherwise)
-    if story.estimate < 0
+    if story.story_type == 'feature' && story.estimate < 0
       question   = Rainbow("How many points in the story (0-8)? ").green
       points = ask(question, Integer) { |q| q.in = 0..8 }
       @tracker.set_points(story, points)
