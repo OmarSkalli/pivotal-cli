@@ -1,0 +1,154 @@
+#!/usr/bin/env ruby
+require 'gli'
+require 'rainbow'
+require 'pivotal_cli'
+require 'highline/import'
+
+# Application high level settings
+
+include GLI::App
+program_desc 'Pivotal Tracker CLI'
+version PivotalCli::VERSION
+
+# Shared re-usable actions
+
+def setup_config
+  username   = ask("What's your full name? ")
+  project_id = ask("Project Id? ", Integer)
+  token      = ask("API Token? (Available at https://www.pivotaltracker.com/profile) ") {|q| q.validate = /\A[A-Za-z0-9]{32}\z/ }
+
+  @tracker.setup(username, project_id, token)
+  puts Rainbow("Configuration has been saved to `#{@tracker.config_file}`.").yellow
+end
+
+def ensure_setup_complete
+  unless @tracker.setup_complete?
+    puts Rainbow("Missing configuration file `#{@tracker.config_file}`. Let's get you setup.").yellow
+    setup_config
+  end
+  @tracker.load_configuration
+end
+
+def formatted_story(story, index = nil)
+  estimate = (1..8).map { |i| i <= story.estimate.to_i ? '*' : ' ' }.join
+
+  output =  '  '
+  output << "#{index.to_s.rjust(2)}: " unless index.nil?
+  output << Rainbow("#{story.id} ").yellow
+  output << Rainbow("#{story.current_state.rjust(11)} [#{estimate}] ").blue
+  output << story.name
+  output
+end
+
+# CLI entry points
+
+desc 'Display pivotal items assigned to you'
+command :list do |c|
+  c.action do |global_options,options,args|
+    ensure_setup_complete
+    stories = @tracker.my_stories
+    puts Rainbow("\n  You have #{stories.length} stories assigned to you.\n").green
+
+    stories.each_with_index do |story, index|
+      puts formatted_story(story)
+    end
+  end
+end
+
+desc 'Start a pivotal task, and create a branch for it'
+arg_name '<branchname> [task id]'
+command :branch do |c|
+  c.action do |global_options,options,args|
+    ensure_setup_complete
+    if args.length < 1
+      puts Rainbow("\n  Please specify a branch name to create.\n").red
+      next
+    end
+
+    stories = @tracker.my_stories
+    branch_name = args[0]
+    task_id     = args[1].to_i
+    story       = task_id && stories.find { |story| story.id == task_id }
+    new_story   = PivotalTracker::Story.new(name: '<Create a new story>', id: '????????', current_state: '', estimate: -1)
+
+    # Ask the user to select a task from the menu
+    if story.nil?
+      puts Rainbow("\n  You have #{stories.length} stories assigned to you.\n").green
+
+      # Create a dummy new story
+      stories << new_story
+      stories.each_with_index do |story, index|
+        puts formatted_story(story, index + 1)
+      end
+
+      question   = Rainbow("\nWhich of the #{stories.length} stories are you starting? ").green
+      task_index = ask(question, Integer) { |q| q.in = 1..(stories.length) }
+      story = stories[task_index - 1]
+    end
+
+    # Create the new story on the fly
+    if story == new_story
+      story_name = ask(Rainbow('Story name? ').green)
+      story_description = ask(Rainbow('Story description? ').green)
+      story = @tracker.create_story(story_name, story_description)
+      if story.errors && story.errors.count > 0
+        puts Rainbow("Whoops, something went wrong when creating the story:").red
+        story.errors.each do |error|
+          puts "  * #{error}"
+        end
+        next
+      end
+    end
+
+    # Make sure feature is estimated (can't start otherwise)
+    if story.estimate < 0
+      question   = Rainbow("How many points in the story (0-8)? ").green
+      points = ask(question, Integer) { |q| q.in = 0..8 }
+      @tracker.set_points(story, points)
+    end
+
+    # Checkout branch
+    branch_name = "pv-#{story.id}-#{branch_name}"
+    command = "git checkout -b #{branch_name}"
+    puts "Executing: #{command}"
+    success = system(command)
+
+    # Update status
+    if success
+       @tracker.start(story)
+       puts Rainbow("Set story #{story.id} as 'Started'\n").green
+    else
+      puts Rainbow("^ Whoops, something went wrong...").red
+    end
+  end
+end
+
+desc 'Setup your pivotal account, by creating a config file in ~/.pivotal_cli'
+command :setup do |c|
+  c.action do |global_options,options,args|
+
+    if @tracker.setup_complete?
+      puts Rainbow("Looks like you already have an existing `#{@tracker.config_file}` config file.").yellow
+      answer = ask('Overwrite file? [y, n]') { |q| q.in = ['y', 'n']; q.default = 'n' }
+      next if answer == 'n'
+    end
+
+    # Required information for the API
+    setup_config
+  end
+end
+
+pre do |global,command,options,args|
+  @tracker = PivotalCli::Tracker.new
+  true
+end
+
+post do |global,command,options,args|
+  puts ""
+end
+
+on_error do |exception|
+  true
+end
+
+exit run(ARGV)
