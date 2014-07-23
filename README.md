@@ -7,7 +7,7 @@ Simple command line tool for working with pivotal stories.
 To install the gem:
 
 ```bash
-gem install pivotal_cli
+gem install pivotal-cli
 ```
 
 # Usage
