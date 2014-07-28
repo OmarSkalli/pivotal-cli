@@ -13,11 +13,11 @@ version PivotalCli::VERSION
 # Shared re-usable actions
 
 def setup_config
-  username   = ask("What's your full name? ")
-  project_id = ask("Project Id? ", Integer)
-  token      = ask("API Token? (Available at https://www.pivotaltracker.com/profile) ") {|q| q.validate = /\A[A-Za-z0-9]{32}\z/ }
+  username    = ask("What's your full name? ")
+  project_ids = ask("Project Id(s)? (For multiple projects, comma separate Ids) ")
+  token       = ask("API Token? (Available at https://www.pivotaltracker.com/profile) ") {|q| q.validate = /\A[A-Za-z0-9]{32}\z/ }
 
-  @tracker.setup(username, project_id, token)
+  @tracker.setup(username, project_ids, token)
   puts Rainbow("Configuration has been saved to `#{@tracker.config_file}`.").yellow
 end
 
@@ -46,11 +46,14 @@ desc 'Display pivotal items assigned to you'
 command :list do |c|
   c.action do |global_options,options,args|
     ensure_setup_complete
-    stories = @tracker.my_stories
-    puts Rainbow("\n  You have #{stories.length} stories assigned to you.\n").green
+    stories_per_project = @tracker.my_stories_per_project
+    stories_per_project.each do |id, name, stories|
+      next if stories.length == 0
 
-    stories.each_with_index do |story, index|
-      puts formatted_story(story)
+      puts Rainbow("\n  == #{name} - #{stories.length} stor#{stories.length == 1 ? 'y' : 'ies'} assigned to you.\n").green
+      stories.each do |story|
+        puts formatted_story(story)
+      end
     end
   end
 end
@@ -65,32 +68,50 @@ command :branch do |c|
       next
     end
 
-    stories = @tracker.my_stories
+    stories_per_project = @tracker.my_stories_per_project
+    stories_per_id = []
+    stories = stories_per_project.map(&:last).flatten
+
     branch_name = args[0]
     task_id     = args[1].to_i
     story       = task_id && stories.find { |story| story.id == task_id }
-    new_story   = PivotalTracker::Story.new(name: '<Create a new story>', id: '????????', current_state: '', estimate: -1)
 
     # Ask the user to select a task from the menu
     if story.nil?
-      puts Rainbow("\n  You have #{stories.length} stories assigned to you.\n").green
 
-      # Create a dummy new story
-      stories << new_story
-      stories.each_with_index do |story, index|
-        puts formatted_story(story, index + 1)
+      story_index = 1
+      stories_per_project.each do |id, name, stories|
+        puts Rainbow("\n  == #{name} - #{stories.length} stor#{stories.length == 1 ? 'y' : 'ies'} assigned to you.\n").green
+
+        # Create a dummy new story
+        new_story = PivotalTracker::Story.new(
+            name: '<Create a new story>',
+            id: '????????',
+            current_state: '',
+            estimate: -1,
+            project_id: id
+        )
+
+        # Show all, yay!
+        stories << new_story
+        stories.each do |story|
+          puts formatted_story(story, story_index)
+          stories_per_id[story_index] = story
+          story_index += 1
+        end
       end
 
-      question   = Rainbow("\nWhich of the #{stories.length} stories are you starting? ").green
-      task_index = ask(question, Integer) { |q| q.in = 1..(stories.length) }
-      story = stories[task_index - 1]
+      question = Rainbow("\nWhich of the #{story_index - 1} stories are you starting? ").green
+      selected_index = ask(question, Integer) { |q| q.in = 1..(story_index - 1) }
+      story = stories_per_id[selected_index]
     end
 
     # Create the new story on the fly
-    if story == new_story
-      story_name = ask(Rainbow('Story name? ').green)
-      story_description = ask(Rainbow('Story description? ').green)
-      story = @tracker.create_story(story_name, story_description)
+    if story.id.include? '?'
+      story.id = nil
+      story.name = ask(Rainbow('Story name? ').green)
+      story.description = ask(Rainbow('Story description? ').green)
+      story = @tracker.create_story(story)
       if story.errors && story.errors.count > 0
         puts Rainbow("Whoops, something went wrong when creating the story:").red
         story.errors.each do |error|
