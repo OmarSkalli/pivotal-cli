@@ -15,6 +15,7 @@ spec = Gem::Specification.new do |s|
   s.executables << 'pivotal'
   s.add_runtime_dependency('gli','2.11.0')
   s.add_runtime_dependency('rainbow', '2.0.0')
+  s.add_runtime_dependency('launchy', '2.4.2')
   s.add_runtime_dependency('highline','1.6.21')
   s.add_runtime_dependency('pivotal-tracker', '0.5.12')
 end

@@ -1,5 +1,6 @@
 #!/usr/bin/env ruby
 require 'gli'
+require 'launchy'
 require 'rainbow'
 require 'pivotal_cli'
 require 'highline/import'
@@ -40,6 +41,50 @@ def formatted_story(story, index = nil)
   output
 end
 
+def ask_which_story(stories_per_project, show_new = false)
+  stories_per_id = []
+  story_index = 1
+  stories_per_project.each do |id, name, stories|
+    puts Rainbow("\n  == #{name} - #{stories.length} stor#{stories.length == 1 ? 'y' : 'ies'} assigned to you.\n").green
+
+    # Create a dummy new story
+    if show_new
+      new_story = PivotalTracker::Story.new(
+          name: '<Create a new story>',
+          id: '????????',
+          current_state: '',
+          estimate: -1,
+          project_id: id
+      )
+      stories << new_story
+    end
+
+    # Show all, yay!
+    stories.each do |story|
+      puts formatted_story(story, story_index)
+      stories_per_id[story_index] = story
+      story_index += 1
+    end
+  end
+
+  question = Rainbow("\nWhich of the #{story_index - 1} stories? ").green
+  selected_index = ask(question, Integer) { |q| q.in = 1..(story_index - 1) }
+  stories_per_id[selected_index]
+end
+
+def find_story(story_id, allow_create = false)
+  stories_per_project = @tracker.my_stories_per_project
+  stories = stories_per_project.map(&:last).flatten
+  story_id = story_id.to_i
+  story = story_id && stories.find { |story| story.id == story_id }
+
+  if story.nil?
+    story = ask_which_story(stories_per_project, allow_create)
+  end
+
+  story
+end
+
 # CLI entry points
 
 desc 'Display pivotal items assigned to you'
@@ -58,8 +103,18 @@ command :list do |c|
   end
 end
 
+desc 'Open story in browser'
+arg_name '[story id]'
+command :open do |c|
+  c.action do |global_options,options,args|
+    ensure_setup_complete
+    story = find_story(args[0])
+    Launchy.open(story.url)
+  end
+end
+
 desc 'Start a pivotal task, and create a branch for it'
-arg_name '<branchname> [task id]'
+arg_name '<branchname> [story id]'
 command :branch do |c|
   c.action do |global_options,options,args|
     ensure_setup_complete
@@ -68,46 +123,11 @@ command :branch do |c|
       next
     end
 
-    stories_per_project = @tracker.my_stories_per_project
-    stories_per_id = []
-    stories = stories_per_project.map(&:last).flatten
-
     branch_name = args[0]
-    task_id     = args[1].to_i
-    story       = task_id && stories.find { |story| story.id == task_id }
-
-    # Ask the user to select a task from the menu
-    if story.nil?
-
-      story_index = 1
-      stories_per_project.each do |id, name, stories|
-        puts Rainbow("\n  == #{name} - #{stories.length} stor#{stories.length == 1 ? 'y' : 'ies'} assigned to you.\n").green
-
-        # Create a dummy new story
-        new_story = PivotalTracker::Story.new(
-            name: '<Create a new story>',
-            id: '????????',
-            current_state: '',
-            estimate: -1,
-            project_id: id
-        )
-
-        # Show all, yay!
-        stories << new_story
-        stories.each do |story|
-          puts formatted_story(story, story_index)
-          stories_per_id[story_index] = story
-          story_index += 1
-        end
-      end
-
-      question = Rainbow("\nWhich of the #{story_index - 1} stories are you starting? ").green
-      selected_index = ask(question, Integer) { |q| q.in = 1..(story_index - 1) }
-      story = stories_per_id[selected_index]
-    end
+    story = find_story(args[1], true)
 
     # Create the new story on the fly
-    if story.id.include? '?'
+    if story.id[0] == '?'
       story.id = nil
       story.name = ask(Rainbow('Story name? ').green)
       story.description = ask(Rainbow('Story description? ').green)
