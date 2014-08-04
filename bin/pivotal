@@ -149,7 +149,7 @@ command :branch do |c|
     end
 
     # Checkout branch
-    branch_name = "pv-#{story.id}-#{branch_name}"
+    branch_name = "#{branch_name}-pv-#{story.id}"
     command = "git checkout -b #{branch_name}"
     puts "Executing: #{command}"
     success = system(command)
