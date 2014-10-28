@@ -173,7 +173,7 @@ command :commit do |c|
     ensure_setup_complete
 
     git = Git.open(Dir.pwd)
-    branch = git.branches.local[0].to_s
+    branch = git.branches.local.find {|branch| branch.current }.to_s
 
     matches = branch.match(/.+-pv-(?<story_id>\d+)/)
     if matches && matches['story_id']
