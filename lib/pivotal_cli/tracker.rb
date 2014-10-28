@@ -28,6 +28,15 @@ module PivotalCli
       end
     end
 
+    def find_story(story_id)
+      projects.each do |project|
+        story = project.stories.find(story_id)
+        return story unless story.nil?
+      end
+
+      nil
+    end
+
     def create_story(story)
       story.story_type = 'feature'
       story.owned_by = username

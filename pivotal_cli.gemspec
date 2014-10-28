@@ -18,4 +18,5 @@ spec = Gem::Specification.new do |s|
   s.add_runtime_dependency('launchy', '2.4.2')
   s.add_runtime_dependency('highline','1.6.21')
   s.add_runtime_dependency('pivotal-tracker', '0.5.12')
+  s.add_runtime_dependency('git', '1.2.8')
 end
