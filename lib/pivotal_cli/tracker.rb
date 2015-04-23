@@ -51,6 +51,14 @@ module PivotalCli
       story.update(current_state: 'started')
     end
 
+    def finish(story)
+      story.update(current_state: 'finished')
+    end
+
+    def deliver(story)
+      story.update(current_state: 'delivered')
+    end
+
     def load_configuration
       File.open(config_file, 'r') do |file|
         lines = file.readlines

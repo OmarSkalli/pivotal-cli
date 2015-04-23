@@ -6,6 +6,9 @@ require 'rainbow'
 require 'pivotal_cli'
 require 'highline/import'
 
+# Welcome message
+puts Rainbow("\nPivotal CLI #{PivotalCli::VERSION}\n").yellow
+
 # Application high level settings
 
 include GLI::App
@@ -84,6 +87,27 @@ def find_story(story_id, allow_create = false)
   end
 
   story
+end
+
+def find_story_from_branch
+  git = Git.open(Dir.pwd)
+  branch = git.branches.local.find {|branch| branch.current }.to_s
+
+  matches = branch.match(/.+-pv-(?<story_id>\d+)/)
+  if matches && matches['story_id']
+    story_id = matches['story_id']
+    story = @tracker.find_story(story_id)
+    if story
+      puts Rainbow("Found story #{story_id}: #{story.name}").green
+      return story
+    else
+      puts Rainbow("No pivotal story found with id #{story_id}.").red
+      return nil
+    end
+  else
+    puts Rainbow("No pivotal story found based on branch name.").red
+    return nil
+  end
 end
 
 # CLI entry points
@@ -171,28 +195,51 @@ arg_name '<commit>'
 command :commit do |c|
   c.action do |global_options,options,args|
     ensure_setup_complete
+    story = find_story_from_branch
+    if story
+      git = Git.open(Dir.pwd)
+      git.add(all: true)
+      puts 'git add -A'
 
-    git = Git.open(Dir.pwd)
-    branch = git.branches.local.find {|branch| branch.current }.to_s
+      commit_message = "\"#{story.name.gsub('"', '\"')} [##{story.id}]\""
+      git.commit(commit_message)
+      puts "git commit -m #{commit_message}"
+    end
+  end
+end
 
-    matches = branch.match(/.+-pv-(?<story_id>\d+)/)
-    if matches && matches['story_id']
-      story_id = matches['story_id']
-      story = @tracker.find_story(story_id)
-      if story
-        puts Rainbow("Found story #{story_id}: #{story.name}'").green
-
-        git.add(all: true)
-        puts 'git add -A'
-
-        git.commit(story.name)
-        puts "git commit -m \"#{story.name.gsub('"', '\"')}\""
-
+desc 'Create a pull request from current branch'
+command :'pull-request' do |c|
+  c.action do |global_options,options,args|
+    ensure_setup_complete
+    story = find_story_from_branch
+    if story
+      command = "hub pull-request -m \"#{story.name.gsub('"', '\"')}\""
+      puts command
+      if system(command)
+         @tracker.finish(story)
+         puts Rainbow("Set story #{story.id} as 'Finished'\n").green
       else
-        puts Rainbow("No pivotal story found with id #{story_id}.").red
+        puts Rainbow("^ Whoops, something went wrong...").red
       end
-    else
-      puts Rainbow("No pivotal story found based on branch name.").red
+    end
+  end
+end
+
+desc 'Land a pull request from current branch'
+command :land do |c|
+  c.action do |global_options,options,args|
+    ensure_setup_complete
+    story = find_story_from_branch
+    if story
+      command = "hub land"
+      puts command
+      if system(command)
+         @tracker.deliver(story)
+         puts Rainbow("Set story #{story.id} as 'Delivered'\n").green
+      else
+        puts Rainbow("^ Whoops, something went wrong...").red
+      end
     end
   end
 end
