@@ -91,7 +91,7 @@ end
 
 def find_story_from_branch
   git = Git.open(Dir.pwd)
-  branch = git.branches.local.find {|branch| branch.current }.to_s
+  branch = git.current_branch.to_s
 
   matches = branch.match(/.+-pv-(?<story_id>\d+)/)
   if matches && matches['story_id']
@@ -201,7 +201,7 @@ command :commit do |c|
       git.add(all: true)
       puts 'git add -A'
 
-      commit_message = "\"#{story.name.gsub('"', '\"')} [##{story.id}]\""
+      commit_message = "#{story.name.gsub('"', '\"')} [##{story.id}]"
       git.commit(commit_message)
       puts "git commit -m #{commit_message}"
     end
